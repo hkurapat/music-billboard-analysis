@@ -162,3 +162,192 @@ billboard_top10_longer |>
     caption = "Source: tidyr::billboard"
   )
 ```
+
+```{r}
+#| message: false
+music <- read_csv("data/music.csv")
+music
+```
+
+```{r}
+music |>
+  select(starts_with("artist")) |>
+  glimpse()
+```
+
+```{r}
+music |>
+  select(artist.name, artist.location, artist.latitude, artist.longitude,
+         artist.terms, artist.familiarity, artist.hotttnesss,
+         song.title, song.year) |>
+  slice_head(n = 8)
+```
+
+```{r}
+music |>
+  summarize(
+    rows = n(),
+    artist_location_zero = sum(artist.location == 0),
+    release_name_zero = sum(release.name == 0),
+    song_title_zero = sum(song.title == 0),
+    song_year_zero = sum(song.year == 0),
+    familiarity_zero = sum(artist.familiarity == 0),
+    hotttnesss_zero = sum(artist.hotttnesss == 0)
+  )
+```
+
+```{r}
+music |>
+  summarize(
+    total = n(),
+    placeholder_coords = sum(artist.latitude == 0 & artist.longitude == 0),
+    usable_coords = sum(!(artist.latitude == 0 & artist.longitude == 0))
+  )
+```
+
+```{r}
+#| cache: true
+library(maps)
+world <- map_data("world")
+
+music_map_data <- music |>
+  filter(!(artist.latitude == 0 & artist.longitude == 0))
+
+ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(map_id = region),
+    fill = "gray90", color = "gray70", linewidth = 0.2
+  ) +
+  geom_point(
+    data = music_map_data,
+    aes(x = artist.longitude, y = artist.latitude),
+    alpha = 0.3, color = "steelblue", size = 0.6
+  ) +
+  expand_limits(x = world$long, y = world$lat) +
+  labs(
+    title = "Artist locations in the Million Song Dataset",
+    subtitle = "Only 37% of artists have usable coordinates; US and Western Europe dominate",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Million Song Dataset teaching CSV"
+  ) +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+
+```{r}
+#| cache: true
+music_map_data |>
+  filter(artist.familiarity > 0) |>
+  ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(map_id = region),
+    fill = "gray90", color = "gray70", linewidth = 0.2
+  ) +
+  geom_point(
+    aes(x = artist.longitude, y = artist.latitude, color = artist.familiarity),
+    alpha = 0.5, size = 0.7
+  ) +
+  expand_limits(x = world$long, y = world$lat) +
+  scale_color_viridis_c(option = "plasma", name = "Familiarity") +
+  labs(
+    title = "Artist familiarity varies geographically",
+    subtitle = "Higher familiarity clusters in the US, UK, and Western Europe",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Million Song Dataset teaching CSV"
+  ) +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+```{r}
+#| cache: true
+music_map_data |>
+  filter(artist.hotttnesss > 0) |>
+  ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(map_id = region),
+    fill = "gray90", color = "gray70", linewidth = 0.2
+  ) +
+  geom_point(
+    aes(x = artist.longitude, y = artist.latitude, color = artist.hotttnesss),
+    alpha = 0.5, size = 0.7
+  ) +
+  expand_limits(x = world$long, y = world$lat) +
+  scale_color_viridis_c(option = "plasma", name = "Hotness") +
+  labs(
+    title = "Artist hotness by location",
+    subtitle = "Hotness clusters in the US and Western Europe, similar to familiarity",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Million Song Dataset teaching CSV"
+  ) +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+```{r}
+#| cache: true
+music_map_data |>
+  mutate(genre = case_when(
+    str_detect(artist.terms, "rock")  ~ "Rock",
+    str_detect(artist.terms, "pop")   ~ "Pop",
+    str_detect(artist.terms, "blues") ~ "Blues",
+    str_detect(artist.terms, "jazz")  ~ "Jazz",
+    str_detect(artist.terms, "metal") ~ "Metal"
+  )) |>
+  filter(!is.na(genre)) |>
+  ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(map_id = region),
+    fill = "gray90", color = "gray70", linewidth = 0.2
+  ) +
+  geom_point(
+    aes(x = artist.longitude, y = artist.latitude, color = genre),
+    alpha = 0.5, size = 0.7
+  ) +
+  expand_limits(x = world$long, y = world$lat) +
+  labs(
+    title = "Geographic distribution of top 5 genres",
+    subtitle = "Blues concentrates in the US; metal shows strong European presence",
+    x = NULL,
+    y = NULL,
+    color = "Genre",
+    caption = "Source: Million Song Dataset teaching CSV"
+  ) +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+```{r}
+#| cache: true
+music_map_data |>
+  filter(song.year > 0) |>
+  ggplot() +
+  geom_map(
+    data = world, map = world,
+    aes(map_id = region),
+    fill = "gray90", color = "gray70", linewidth = 0.2
+  ) +
+  geom_point(
+    aes(x = artist.longitude, y = artist.latitude, color = song.year),
+    alpha = 0.5, size = 0.7
+  ) +
+  expand_limits(x = world$long, y = world$lat) +
+  scale_color_viridis_c(option = "plasma", name = "Year") +
+  labs(
+    title = "Song release year by artist location",
+    subtitle = "Older recordings concentrate in the US and UK; newer recordings spread more globally",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Million Song Dataset teaching CSV"
+  ) +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
