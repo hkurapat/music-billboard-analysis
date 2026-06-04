@@ -1,5 +1,164 @@
 ---
 title: "Analyzing Music Data"
+author: "Harshil Kurapati"
 format: html
+execute:
+  echo: false
 ---
 
+```{r}
+#| message: false
+library(tidyverse)
+```
+
+```{r}
+billboard |>
+  select(artist, track, date.entered, wk1, wk2, wk3, wk4) |>
+  slice_head(n = 8)
+```
+```{r}
+summary(billboard$date.entered)
+```
+
+```{r}
+ggplot(billboard, aes(x = wk6)) +
+  geom_histogram(binwidth = 5, boundary = 0, fill = "darkseagreen", color = "white") +
+  labs(
+    title = "Week 6 rankings only include songs still on the chart",
+    subtitle = "Rank 1 is best; missing values are excluded (n = 280 songs)",
+    x = "Week 6 rank",
+    y = "Songs",
+    caption = "Source: tidyr::billboard"
+  )
+```
+
+```{r}
+tibble(
+  week = c("wk1", "wk4", "wk10", "wk20", "wk40", "wk76"),
+  missing = c(
+    sum(is.na(billboard$wk1)),
+    sum(is.na(billboard$wk4)),
+    sum(is.na(billboard$wk10)),
+    sum(is.na(billboard$wk20)),
+    sum(is.na(billboard$wk40)),
+    sum(is.na(billboard$wk76))
+  ),
+  present = c(
+    sum(!is.na(billboard$wk1)),
+    sum(!is.na(billboard$wk4)),
+    sum(!is.na(billboard$wk10)),
+    sum(!is.na(billboard$wk20)),
+    sum(!is.na(billboard$wk40)),
+    sum(!is.na(billboard$wk76))
+  )
+)
+```
+
+```{r}
+billboard |>
+  pivot_longer(cols = starts_with("wk"),
+               names_to = "week",
+               values_to = "rank") |>
+  group_by(artist, track) |>
+  arrange(week) |>
+  mutate(prev_na = lag(is.na(rank)),
+         reentered = is.na(prev_na) == FALSE & prev_na == TRUE & !is.na(rank)) |>
+  summarize(reentered = any(reentered), .groups = "drop") |>
+  count(reentered, name = "songs")
+```
+
+```{r}
+billboard |>
+  select(artist, track, wk1, wk6) |>
+  mutate(wk6_status = case_when(
+    is.na(wk6) ~ "Missing by week 6",
+    wk6 < wk1 ~ "Improved",
+    wk6 == wk1 ~ "Same",
+    wk6 > wk1 ~ "Worse"
+  )) |>
+  mutate(wk6_status = factor(wk6_status, levels = c("Improved", "Same", "Worse", "Missing by week 6"))) |>
+  count(wk6_status, name = "songs")
+
+billboard |>
+  select(wk1, wk6) |>
+  filter(!is.na(wk1), !is.na(wk6)) |>
+  summarize(songs_with_both_weeks = n(),
+            median_rank_change = median(wk6 - wk1))
+```
+
+```{r}
+billboard_longer <- billboard |>
+  pivot_longer(cols = starts_with("wk"),
+               names_to = "week",
+               names_prefix = "wk",
+               names_transform = list(week = as.integer),
+               values_to = "rank") |>
+  mutate(song = paste(artist, track, sep = " - "))
+
+billboard_longer |>
+  filter(!is.na(rank)) |>
+  ggplot(aes(x = week, y = rank, group = song)) +
+  geom_line(alpha = 0.18, color = "gray50") +
+  scale_y_reverse() +
+  labs(
+    title = "Billboard rankings over time",
+    subtitle = "Each line is one song after it entered the Hot 100",
+    x = "Weeks since entering the chart",
+    y = "Billboard rank",
+    caption = "Source: tidyr::billboard"
+  )
+```
+
+```{r}
+billboard_top10 <- billboard_longer |>
+  group_by(artist, track, song) |>
+  summarize(
+    first_rank = first(rank[!is.na(rank)]),
+    best_rank = min(rank, na.rm = TRUE),
+    first_best_week = min(week[rank == min(rank, na.rm = TRUE)], na.rm = TRUE),
+    weeks_on_chart = sum(!is.na(rank)),
+    .groups = "drop"
+  ) |>
+  filter(best_rank <= 10)
+
+billboard_top10_stories <- bind_rows(
+  billboard_top10 |> filter(best_rank == 1) |> arrange(first_best_week) |> slice(1) |> mutate(story = "Fastest to #1"),
+  billboard_top10 |> filter(best_rank == 1) |> arrange(desc(first_best_week)) |> slice(1) |> mutate(story = "Slowest to #1"),
+  billboard_top10 |> arrange(desc(weeks_on_chart)) |> slice(1) |> mutate(story = "Longest run")
+)
+
+billboard_top10_stories |>
+  select(story, artist, track, song, first_rank, best_rank, first_best_week, weeks_on_chart)
+```
+
+```{r}
+#| cache: true
+billboard_top10_longer <- billboard_longer |>
+  semi_join(billboard_top10, by = c("artist", "track", "song"))
+
+billboard_top10_longer |>
+  filter(!is.na(rank)) |>
+  ggplot(aes(x = week, y = rank, group = song)) +
+  geom_line(color = "gray75", alpha = 0.35) +
+  geom_line(
+    data = billboard_top10_longer |>
+      semi_join(billboard_top10_stories, by = c("artist", "track", "song")) |>
+      filter(!is.na(rank)),
+    aes(color = song),
+    linewidth = 1
+  ) +
+  geom_point(
+    data = billboard_top10_stories,
+    aes(x = first_best_week, y = best_rank, color = song),
+    size = 2
+  ) +
+  scale_y_reverse() +
+  labs(
+    title = "Top-10 hits follow different chart paths",
+    subtitle = "Each line is one song that reached the top 10 of the Billboard Hot 100",
+    x = "Weeks since entering the chart",
+    y = "Billboard rank",
+    color = "Song",
+    caption = "Source: tidyr::billboard"
+  )
+```
